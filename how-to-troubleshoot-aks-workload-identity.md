@@ -97,6 +97,23 @@ The `SecretProviderClass`, Pod, and any synchronized Kubernetes Secret must be i
 
 If a Kubernetes Secret is required, configure `secretObjects` in the `SecretProviderClass` and ensure secret synchronization is enabled for the CSI driver. The synchronized Secret is materialized when a Pod mounts the CSI volume and is subject to normal Kubernetes Secret access controls. Prefer mounted files when the application supports them.
 
+To inspect the installed `secretObjects` schema and a configured mapping, run:
+
+```sh
+kubectl explain secretproviderclass.spec.secretObjects --api-version=secrets-store.csi.x-k8s.io/v1
+kubectl get secretproviderclass <secret-provider-class> -n <kubernetes-namespace> -o yaml
+```
+
+Each `secretObjects` entry maps a mounted provider object to a Kubernetes Secret. `secretName` names the Kubernetes Secret, `type` sets its Secret type, `data[].key` names a key in that Secret, and `data[].objectName` identifies the mounted object. The `objectName` must match an object in `spec.parameters.objects` (or its mounted alias, if one is configured).
+
+To verify that synchronization created the Secret and check its key names without displaying values, run:
+
+```sh
+kubectl describe secret <secret-name> -n <kubernetes-namespace>
+```
+
+Do not share `kubectl get secret -o yaml` output: `.data` values are base64-encoded, not encrypted. Secret synchronization requires a Pod to mount the CSI volume; the Secret is removed after all Pods consuming it are deleted. If the Secret is missing, verify that a Pod mounts the intended `SecretProviderClass` and inspect its events.
+
 ## 5. Diagnose errors from the pod and CSI provider
 
 Start with Pod status, events, and the CSI provider logs. Driver and provider pod names vary by AKS add-on and deployment:
@@ -127,4 +144,4 @@ If the container image lacks the public CA bundle, install `ca-certificates` at 
 
 Do not download a root certificate from the endpoint that failed validation, disable TLS verification, or run the application as root just to work around certificate trust. If the certificate chain is incomplete or intercepted, involve the cluster/network owner.
 
-References: [AKS Workload Identity overview](https://learn.microsoft.com/azure/aks/workload-identity-overview), [Key Vault CSI identity access](https://learn.microsoft.com/azure/aks/csi-secrets-store-identity-access#access-with-a-microsoft-entra-workload-id), [Secrets Store CSI Driver](https://learn.microsoft.com/azure/aks/csi-secrets-store-driver).
+References: [AKS Workload Identity overview](https://learn.microsoft.com/azure/aks/workload-identity-overview), [Key Vault CSI identity access](https://learn.microsoft.com/azure/aks/csi-secrets-store-identity-access#access-with-a-microsoft-entra-workload-id), [AKS Secrets Store CSI Driver](https://learn.microsoft.com/azure/aks/csi-secrets-store-driver), [CSI Driver secret synchronization](https://secrets-store-csi-driver.sigs.k8s.io/topics/sync-as-kubernetes-secret).

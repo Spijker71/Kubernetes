@@ -1,0 +1,98 @@
+# DEV example. Use the environment-specific namespace and defaults in other clusters.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: excelconversion-resource-reset
+  namespace: dtlgt-dev
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: excelconversion-resource-reset
+  namespace: dtlgt-dev
+rules:
+  - apiGroups:
+      - keda.sh
+    resources:
+      - scaledjobs
+    resourceNames:
+      - excelconversion-scaler
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: excelconversion-resource-reset
+  namespace: dtlgt-dev
+subjects:
+  - kind: ServiceAccount
+    name: excelconversion-resource-reset
+    namespace: dtlgt-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: excelconversion-resource-reset
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: excelconversion-resource-reset
+  namespace: dtlgt-dev
+spec:
+  schedule: "*/1 * * * *"
+  timeZone: Europe/Amsterdam
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          serviceAccountName: excelconversion-resource-reset
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          containers:
+            - name: reset-resources
+              image: acrdcr.azurecr.io/docker-hub/bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - kubectl
+              args:
+                - patch
+                - scaledjobs.keda.sh
+                - excelconversion-scaler
+                - --namespace=dtlgt-dev
+                - --type=json
+                - --patch
+                # Literal style preserves the JSON patch's line breaks.
+                - |-
+                  [{"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/resources/requests/cpu","value":"2048m"},
+                   {"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/resources/requests/memory","value":"8Gi"},
+                   {"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/resources/limits/cpu","value":"2048m"},
+                   {"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/resources/limits/memory","value":"16Gi"}]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsUser: 10001
+                runAsGroup: 10001
+                capabilities:
+                  drop:
+                    - ALL
